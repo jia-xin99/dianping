@@ -6,4 +6,6 @@ import com.dp.entity.Shop;
 
 public interface ShopService extends IService<Shop> {
     Result queryById(Long id);
+
+    Result update(Shop shop);
 }

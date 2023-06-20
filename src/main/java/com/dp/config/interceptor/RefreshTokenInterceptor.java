@@ -4,9 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.dp.dto.UserDTO;
 import com.dp.utils.UserHolder;
-import io.netty.util.internal.StringUtil;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.web.context.request.WebRequestInterceptor;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
@@ -14,8 +12,8 @@ import javax.servlet.http.HttpServletResponse;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static com.dp.utils.RedisConstants.LOGIN_USER_KEY;
-import static com.dp.utils.RedisConstants.LOGIN_USER_TTL;
+import static com.dp.utils.redis.RedisConstants.LOGIN_USER_KEY;
+import static com.dp.utils.redis.RedisConstants.LOGIN_USER_TTL;
 
 /**
  * 刷新token拦截器
@@ -54,7 +52,8 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         // 5. 将用户信息保存在ThreadLocal中
         UserHolder.saveUser(user);
         // 6. 刷新token时间
-        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
+        // TODO 解开
+//        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
         // 7. 放行
         return true;
     }
@@ -67,6 +66,5 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         // 移除用户，防止内存泄露
         UserHolder.removeUser();
     }
-
 }
 

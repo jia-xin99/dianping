@@ -1,11 +1,14 @@
 package com.dp.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.dp.dto.Result;
 import com.dp.entity.Shop;
 import com.dp.service.ShopService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Slf4j
 @RestController
@@ -27,7 +30,19 @@ public class ShopController {
     }
 
     /**
+     * 更新商铺信息
+     *
+     * @param shop 商铺数据
+     */
+    @PutMapping()
+    public Result updateShop(@RequestBody Shop shop) {
+        // 更新数据库，删除redis中缓存
+        return shopService.update(shop);
+    }
+
+    /**
      * 新增商铺信息
+     *
      * @param shop 商铺数据
      * @return 商铺id
      */
@@ -40,6 +55,25 @@ public class ShopController {
     }
 
 
-
+    /**
+     * 根据商铺类型分页查询商铺信息
+     *
+     * @param typeId  商铺类型
+     * @param current 页码
+     * @param x       当前经度
+     * @param y       当前纬度
+     * @return 商铺列表
+     */
+    @GetMapping("/of/type")
+    public Result queryShopByType(
+            @RequestParam("typeId") Integer typeId,
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "x", required = false) Double x,
+            @RequestParam(value = "y", required = false) Double y) {
+        QueryWrapper<Shop> queryWrapper = new QueryWrapper<>();
+        queryWrapper.lambda().eq(Shop::getTypeId, typeId);
+        List<Shop> list = shopService.list(queryWrapper);
+        return Result.ok(list);
+    }
 }
 

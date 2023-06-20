@@ -8,4 +8,6 @@ public interface ShopService extends IService<Shop> {
     Result queryById(Long id);
 
     Result update(Shop shop);
+
+    Result queryShopByName(String name, Integer current);
 }

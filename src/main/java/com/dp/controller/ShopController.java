@@ -1,14 +1,21 @@
 package com.dp.controller;
 
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.dp.dto.Result;
 import com.dp.entity.Shop;
 import com.dp.service.ShopService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+
+import static com.dp.utils.SystemConstants.MAX_PAGE_SIZE;
 
 @Slf4j
 @RestController
@@ -74,6 +81,20 @@ public class ShopController {
         queryWrapper.lambda().eq(Shop::getTypeId, typeId);
         List<Shop> list = shopService.list(queryWrapper);
         return Result.ok(list);
+    }
+
+    /**
+     * 根据商铺名称关键字分页查询商铺信息
+     *
+     * @param name    商铺名称关键字
+     * @param current 页码
+     * @return 商铺列表
+     */
+    @GetMapping("/of/name")
+    public Result queryShopByName(
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "current", defaultValue = "1") Integer current) {
+        return shopService.queryShopByName(name,current);
     }
 }
 

@@ -1,5 +1,8 @@
 package com.dp.service.impl;
 
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.dp.dto.Result;
 import com.dp.entity.Shop;
@@ -14,6 +17,7 @@ import javax.annotation.Resource;
 
 import java.util.concurrent.TimeUnit;
 
+import static com.dp.utils.SystemConstants.MAX_PAGE_SIZE;
 import static com.dp.utils.redis.RedisConstants.*;
 
 /**
@@ -61,6 +65,16 @@ public class ShopServiceImpl1 extends ServiceImpl<ShopMapper, Shop> implements S
             stringRedisTemplate.delete(cacheShopKey);
         }
         return Result.ok();
+    }
+
+    @Override
+    public Result queryShopByName(String name, Integer current) {
+        LambdaQueryWrapper<Shop> queryWrapper = new LambdaQueryWrapper<>();
+        // 根据名字分页查询
+        queryWrapper.like(StrUtil.isNotBlank(name), Shop::getName, name);
+        Page<Shop> shopPage = new Page<>(current, MAX_PAGE_SIZE);
+        shopPage = this.page(shopPage, queryWrapper);
+        return Result.ok(shopPage.getRecords());
     }
 }
 

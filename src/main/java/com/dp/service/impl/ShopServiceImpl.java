@@ -4,6 +4,8 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.dp.dto.Result;
 import com.dp.entity.Shop;
@@ -20,6 +22,7 @@ import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.concurrent.*;
 
+import static com.dp.utils.SystemConstants.MAX_PAGE_SIZE;
 import static com.dp.utils.redis.RedisConstants.*;
 
 @Slf4j
@@ -42,8 +45,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements Sh
      * 解决缓存击穿问题
      * 根据id查询店铺，第四版本：使用逻辑删除
      */
-    @Override
-    public Result queryById(Long id) {
+    public Result queryById4(Long id) {
         Shop shop = queryWithLogicalExpire(id);
         if (shop == null) {
             return Result.fail("商铺不存在");
@@ -138,7 +140,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements Sh
      * 解决缓存击穿问题
      * 根据id查询店铺，第三版：使用互斥锁
      */
-    public Result queryById3(Long id) {
+    @Override
+    public Result queryById(Long id) {
         Shop shop = queryWithMutex(id);
         if (shop == null) {
             return Result.fail("商铺不存在");
@@ -291,6 +294,16 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements Sh
             stringRedisTemplate.delete(cacheShopKey);
         }
         return Result.ok();
+    }
+
+    @Override
+    public Result queryShopByName(String name, Integer current) {
+        LambdaQueryWrapper<Shop> queryWrapper = new LambdaQueryWrapper<>();
+        // 根据名字分页查询
+        queryWrapper.like(StrUtil.isNotBlank(name), Shop::getName, name);
+        Page<Shop> shopPage = new Page<>(current, MAX_PAGE_SIZE);
+        shopPage = this.page(shopPage, queryWrapper);
+        return Result.ok(shopPage.getRecords());
     }
 }
 

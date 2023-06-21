@@ -15,8 +15,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-import static com.dp.utils.SystemConstants.MAX_PAGE_SIZE;
-
 @Slf4j
 @RestController
 @RequestMapping("/shop")

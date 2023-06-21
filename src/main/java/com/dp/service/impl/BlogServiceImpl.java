@@ -8,19 +8,27 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.dp.dto.Result;
+import com.dp.dto.ScrollResult;
 import com.dp.dto.UserDTO;
 import com.dp.entity.Blog;
+import com.dp.entity.Follow;
 import com.dp.entity.User;
 import com.dp.mapper.BlogMapper;
 import com.dp.service.BlogService;
+import com.dp.service.FollowService;
 import com.dp.service.UserService;
 import com.dp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.aspectj.weaver.ast.Var;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import javax.lang.model.element.TypeElement;
 
+import java.time.Year;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -28,6 +36,7 @@ import java.util.stream.Collectors;
 
 import static com.dp.utils.SystemConstants.MAX_PAGE_SIZE;
 import static com.dp.utils.redis.RedisConstants.BLOG_LIKED_KEY;
+import static com.dp.utils.redis.RedisConstants.FEED_KEY;
 
 @Slf4j
 @Service
@@ -38,6 +47,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements Bl
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private FollowService followService;
 
     @Override
     public Result queryHotBlog(Integer current) {
@@ -155,6 +167,96 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements Bl
                 .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
                 .collect(Collectors.toList());
         return Result.ok(users);
+    }
+
+    @Override
+    public Result queryByUserId(Integer current, Long userId) {
+        Page<Blog> blogPage = new Page<>(current, MAX_PAGE_SIZE);
+        LambdaQueryWrapper<Blog> queryWrapper = new LambdaQueryWrapper<Blog>()
+                .eq(Blog::getUserId, userId)
+                .orderByDesc(Blog::getCreateTime);
+        blogPage = this.page(blogPage, queryWrapper);
+        return Result.ok(blogPage.getRecords());
+    }
+
+    @Override
+    public Result saveBlog(Blog blog) {
+        // 1. 获取登录用户
+        Long userId = UserHolder.getUser().getId();
+        // 2. 保存探店信息
+        blog.setUserId(userId);
+        boolean success = this.save(blog);
+        if (!success) {
+            return Result.fail("发布失败");
+        }
+        // 3. 查询笔记作者关注者（也可做Redis缓存中）
+        LambdaQueryWrapper<Follow> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(Follow::getFollowUserId, userId);
+        List<Follow> follows = followService.list(queryWrapper);
+        Long blogId = blog.getId();
+        // 4. 推送笔记id给所有粉丝（可异步消息）
+        for (Follow follow : follows) {
+            // 4.1 获取粉丝id
+            Long followerId = follow.getUserId();
+            // 4.2 推送到其的zset中，value为当前博客id，score为当前时间
+            String key = FEED_KEY + followerId;
+            stringRedisTemplate.opsForZSet().add(key, blogId.toString(), System.currentTimeMillis());
+        }
+        // 5. 返回id
+        return Result.ok(blogId);
+    }
+
+    @Override
+    public Result queryBlogOfFollow(Long max, Integer offset) {
+        // 1. 获取当前用户
+        Long userId = UserHolder.getUser().getId();
+        // 2. 查询收件箱（第一次查询时，max为当前时间戳，偏移量为0，就是第一页数据，不需要特殊处理）
+        String key = FEED_KEY + userId;
+        // ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
+        Set<ZSetOperations.TypedTuple<String>> typedTuples = stringRedisTemplate.opsForZSet()
+                .reverseRangeByScoreWithScores(key, 0, max, offset, 2);
+        // 3. 非空判断
+        if (typedTuples == null || typedTuples.isEmpty()) {
+            return Result.ok();
+        }
+        // 4. 解析数据：blogId,minTime,offset --- 该数据返回时已排好序
+        List<Long> ids = new ArrayList<>(typedTuples.size());
+        long minTime = 0;
+        int os = 1;
+        for (ZSetOperations.TypedTuple<String> typedTuple : typedTuples) {
+            // 获取id
+            ids.add(Long.valueOf(typedTuple.getValue()));
+            // 获取分数（时间戳）
+            long time = typedTuple.getScore().longValue();
+            if (minTime != time) {
+                minTime = time;
+                os = 1;
+            } else {
+                os++;
+            }
+        }
+        // 5. 根据id查询blog
+        String idStr = StrUtil.join(",", ids);
+        System.out.println(offset);
+        System.out.println(max);
+        System.out.println(ids);
+        LambdaQueryWrapper<Blog> queryWrapper = new LambdaQueryWrapper<Blog>()
+                .in(Blog::getId, ids)
+                .last("ORDER BY FIELD(id," + idStr + ")");
+        List<Blog> blogs = this.list(queryWrapper);
+        // 添加博客是否被点赞等额外信息
+        for (Blog blog : blogs) {
+            // 查询博客相关的用户
+            queryBlogUser(blog);
+            // 查询博客是否被点赞
+            isBlogLiked(blog);
+        }
+        // 6. 封装并返回
+        ScrollResult scrollResult = new ScrollResult();
+        scrollResult.setList(blogs);
+        scrollResult.setMinTime(minTime);
+        scrollResult.setOffset(os);
+        return Result.ok(scrollResult);
     }
 
     private void queryBlogUser(Blog blog) {

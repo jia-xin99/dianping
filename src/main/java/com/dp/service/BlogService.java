@@ -12,4 +12,10 @@ public interface BlogService extends IService<Blog> {
     Result likeBlog(Long id);
 
     Result queryBlogLikes(String id);
+
+    Result queryByUserId(Integer current, Long userId);
+
+    Result saveBlog(Blog blog);
+
+    Result queryBlogOfFollow(Long max, Integer offset);
 }

@@ -14,14 +14,22 @@ import com.dp.service.ShopService;
 import com.dp.utils.redis.RedisData;
 import jodd.util.StringUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.geo.Distance;
+import org.springframework.data.geo.GeoResult;
+import org.springframework.data.geo.GeoResults;
+import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
+import static com.dp.utils.SystemConstants.DEFAULT_PAGE_SIZE;
 import static com.dp.utils.SystemConstants.MAX_PAGE_SIZE;
 import static com.dp.utils.redis.RedisConstants.*;
 
@@ -304,6 +312,61 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements Sh
         Page<Shop> shopPage = new Page<>(current, MAX_PAGE_SIZE);
         shopPage = this.page(shopPage, queryWrapper);
         return Result.ok(shopPage.getRecords());
+    }
+
+    @Override
+    public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+        // 1. 判断是否需要根据坐标查询
+        if (x == null || y == null) {
+            // 直接查询数据库返回
+            Page<Shop> shopPage = new Page<>(current, DEFAULT_PAGE_SIZE);
+            LambdaQueryWrapper<Shop> queryWrapper = new LambdaQueryWrapper<Shop>().eq(Shop::getTypeId, typeId);
+            shopPage = this.page(shopPage, queryWrapper);
+            return Result.ok(shopPage.getRecords());
+        }
+        // 2. 计算分页参数
+        int from = (current - 1) * DEFAULT_BATCH_SIZE;
+        int to = from + DEFAULT_BATCH_SIZE;
+        // 3. 查询redis，按照距离排序、分页，结果：shopId, distance（找到to个商铺，然后再截取）
+        // GEOSEARCH key BYLONLAT x y  BYRADIUS 10 WITHDISTANCE
+        String key = SHOP_GEO_KEY + typeId;
+        GeoResults<RedisGeoCommands.GeoLocation<String>> results = stringRedisTemplate.opsForGeo().search(key, GeoReference.fromCoordinate(x, y),
+                new Distance(5000),
+                RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs().includeDistance().limit(to));
+        // 4. 解析出id
+        if (results == null) {
+            return Result.ok(Collections.emptyList());
+        }
+        List<GeoResult<RedisGeoCommands.GeoLocation<String>>> content = results.getContent();
+        // 注意：需要判断查询到的商铺数要大于from，否则会影响后续的skip，skip后可能为空
+        if (content.size() <= from) {
+            return Result.ok(Collections.emptyList());
+        }
+        // 存储ids
+        List<Long> ids = new ArrayList<>(content.size());
+        // 存储distance
+        HashMap<String, Distance> distanceMap = new HashMap<>();
+        // 4.1 截取form-to的部分
+        content.stream().skip(from).forEach(result -> {
+            // 获取店铺id
+            String shopIdStr = result.getContent().getName();
+            ids.add(Long.valueOf(shopIdStr));
+            // 获取距离
+            Distance distance = result.getDistance();
+            distanceMap.put(shopIdStr, distance);
+        });
+        // 5. 根据id查询shop
+        String idStr = StrUtil.join(",", ids);
+        LambdaQueryWrapper<Shop> queryWrapper = new LambdaQueryWrapper<Shop>()
+                .in(Shop::getId, ids)
+                .last("ORDER BY FILED( id," + idStr + ")");
+        List<Shop> shops = this.list(queryWrapper);
+        for (Shop shop : shops) {
+            // 赋值Distance
+            shop.setDistance(distanceMap.get(shop.getId().toString()).getValue());
+        }
+        // 6. 返回
+        return Result.ok(shops);
     }
 }
 

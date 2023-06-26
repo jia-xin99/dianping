@@ -91,18 +91,15 @@ public class UserController {
         return Result.ok(userDTO);
     }
 
-    // TODO 签到功能
     @PostMapping("/sign")
     public Result sign() {
-        return null;
-//        return userService.sign();
+        return userService.sign();
     }
 
     // TODO 统计连续签到天数
     @GetMapping("/sign/count")
     public Result signCount() {
-//        return userService.signCount();
-        return null;
+        return userService.signCount();
     }
 
 }

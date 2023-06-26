@@ -14,7 +14,9 @@ import com.dp.entity.User;
 import com.dp.mapper.UserMapper;
 import com.dp.service.UserService;
 import com.dp.utils.RegexUtils;
+import com.dp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,7 +24,12 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -175,6 +182,66 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             stringRedisTemplate.delete(tokenKey);
         }
         return Result.ok("退出成功");
+    }
+
+    @Override
+    public Result sign() {
+        // 1. 获取当前登录用户
+        Long userId = UserHolder.getUser().getId();
+        // 2. 获取当前月份与天数
+        LocalDateTime now = LocalDateTime.now();
+        int dayOfMonth = now.getDayOfMonth();
+        // 3. 拼接用户的本月签到key
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = USER_SIGN_KEY + keySuffix;
+        // 4. 通过redis的bitmap签到
+        stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
+        // 5. 返回
+        return Result.ok();
+    }
+
+    @Override
+    public Result signCount() {
+        // 1. 获取当前登录用户
+        Long userId = UserHolder.getUser().getId();
+        // 2. 获取当前月份和当天是本月哪一天
+        LocalDateTime now = LocalDateTime.now();
+        int dayOfMonth = now.getDayOfMonth();
+        // 3. 拼接用户的本月签到key
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = USER_SIGN_KEY + userId + keySuffix;
+        // 4. 通过redis的bitmap获取本月截止到今日的签到信息 --- 返回的是一个十进制的数字 BITFIELD sign:5:202306 GET u14 0
+        List<Long> result = stringRedisTemplate.opsForValue().bitField(
+                key,
+                BitFieldSubCommands.create()
+                        .get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0));
+        // 5. 分析连续签到天数
+        if (result == null || result.isEmpty()) {
+            return Result.ok(0);
+        }
+        Long num = result.get(0);
+        if (num == null || num == 0) {
+            return Result.ok(0);
+        }
+        // 循环统计二进制中1的连续个数（从后往前）
+        int count = 0;
+        // 本日是否签到（本日未签到，已连签天数；本日签到，已连签天数）
+        count += (num & 1);
+        num >>>= 1;
+        while (true) {
+            // 5.1 让这个数字与1做与运算，得到数字的最后一个bit位  // 判断这个bit位是否为0
+            if ((num & 1) == 1) {
+                // 如果不为0，说明已签到，计数器+1
+                count++;
+            } else {
+                // 如果为0，说明未签到，结束
+                break;
+            }
+            // 把数字右移一位，抛弃最后一个bit位，继续下一个bit位
+            num >>>= 1;
+        }
+        // 6. 返回结果
+        return Result.ok(count);
     }
 }
 

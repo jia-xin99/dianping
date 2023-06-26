@@ -237,9 +237,6 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements Bl
         }
         // 5. 根据id查询blog
         String idStr = StrUtil.join(",", ids);
-        System.out.println(offset);
-        System.out.println(max);
-        System.out.println(ids);
         LambdaQueryWrapper<Blog> queryWrapper = new LambdaQueryWrapper<Blog>()
                 .in(Blog::getId, ids)
                 .last("ORDER BY FIELD(id," + idStr + ")");

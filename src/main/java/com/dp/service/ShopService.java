@@ -10,4 +10,6 @@ public interface ShopService extends IService<Shop> {
     Result update(Shop shop);
 
     Result queryShopByName(String name, Integer current);
+
+    Result queryShopByType(Integer typeId, Integer current, Double x, Double y);
 }

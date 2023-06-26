@@ -9,8 +9,6 @@ import com.dp.entity.Shop;
 import com.dp.service.ShopService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -55,6 +53,7 @@ public class ShopController {
     public Result saveShop(@RequestBody Shop shop) {
         // 写入数据库
         shopService.save(shop);
+        // TODO：还要写入redis的geo中
         // 返回店铺id
         return Result.ok(shop.getId());
     }
@@ -64,9 +63,9 @@ public class ShopController {
      * 根据商铺类型分页查询商铺信息
      *
      * @param typeId  商铺类型
-     * @param current 页码
-     * @param x       当前经度
-     * @param y       当前纬度
+     * @param current 页码，滚动查询
+     * @param x       当前所在位置经度（可无）
+     * @param y       当前所在位置纬度（可无）
      * @return 商铺列表
      */
     @GetMapping("/of/type")
@@ -75,10 +74,7 @@ public class ShopController {
             @RequestParam(value = "current", defaultValue = "1") Integer current,
             @RequestParam(value = "x", required = false) Double x,
             @RequestParam(value = "y", required = false) Double y) {
-        QueryWrapper<Shop> queryWrapper = new QueryWrapper<>();
-        queryWrapper.lambda().eq(Shop::getTypeId, typeId);
-        List<Shop> list = shopService.list(queryWrapper);
-        return Result.ok(list);
+        return shopService.queryShopByType(typeId, current, x, y);
     }
 
     /**
@@ -92,7 +88,7 @@ public class ShopController {
     public Result queryShopByName(
             @RequestParam(value = "name", required = false) String name,
             @RequestParam(value = "current", defaultValue = "1") Integer current) {
-        return shopService.queryShopByName(name,current);
+        return shopService.queryShopByName(name, current);
     }
 }
 

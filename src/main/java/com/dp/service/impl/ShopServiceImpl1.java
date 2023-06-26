@@ -76,5 +76,10 @@ public class ShopServiceImpl1 extends ServiceImpl<ShopMapper, Shop> implements S
         shopPage = this.page(shopPage, queryWrapper);
         return Result.ok(shopPage.getRecords());
     }
+
+    @Override
+    public Result queryShopByType(Integer typeId, Integer current, Double x, Double y) {
+        return null;
+    }
 }
 
